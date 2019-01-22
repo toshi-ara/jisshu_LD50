@@ -1,0 +1,71 @@
+p  {line-height:1.6;}
+li {line-height:1.7;}
+
+body {
+  background: mintcream;
+  color: black;
+  margin-left: 4em;
+  margin-right: 4em;
+  margin-bottom: 2em;
+}
+
+h1 {
+  font-size: xx-large;
+  font-weight: bold;
+  color: black;
+  text-align: center;
+  background-color: lemonchiffon;
+  border: 1px solid #ccc;
+  padding: 10px; 
+}
+
+h2 {
+  font-weight: bold;
+  font-size: x-large;
+  background-color: lightgreen;
+  border: 1px solid #ccc;
+  padding: 5px; 
+  margin-bottom: 5px;
+}
+
+h3 {
+  font-size: large;
+  font-weight: bold;
+  background-color: lightgray;
+  border: 1px solid #ccc;
+  padding: 5px;
+}
+
+h4 {
+  font-size: medium;
+  font-weight: bold;
+  background-color: lavender;
+  border: 1px solid #ccc;
+  padding: 5px; 
+}
+
+th {
+  padding-left: 10px;
+  padding-right: 10px;
+  color: black;
+  background: peachpuff;
+  text-align: center;
+}
+
+td {
+  padding-left: 10px;
+  padding-right: 10px;
+  color: black;
+  background: papayawhip;
+  text-align: center;
+}
+
+/* ----- 囲み文字 from kati.css (Nucleus) ----- */
+pre {
+    border: lightgrey 1px solid;
+    background-color: whitesmoke;
+    margin: 5px 5px 5px 5px;
+    padding: 5px 5px 5px 10px;
+    font-size: normal;
+}
+

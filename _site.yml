@@ -1,0 +1,7 @@
+output:
+  html_document:
+    theme: cosmo
+    highlight: textmate
+    df_print: "kable"
+    css: style.css
+output_dir: "docs"
