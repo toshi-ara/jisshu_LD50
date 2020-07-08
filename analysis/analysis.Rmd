@@ -15,23 +15,21 @@ params:
 
 ```{r, include=FALSE}
 library(dplyr)
-library(magrittr)
-library(tibble)
+library(purrr)
 library(tidyr)
 library(modelr)
 library(car)
 library(ggplot2)
 library(RColorBrewer)
 library(gridExtra)
+myfont <- "TeX Gyre Heros"
 
 dat <- tibble(
     dose = params$dose,
     toxic = params$toxic,
     death = params$death,
     total = params$total
-    )
-
-dat <- dat %>%
+    ) %>%
     mutate(ldose = log10(dose),
            rate_t = toxic / total,
            rate_d = death / total)
@@ -39,38 +37,42 @@ dat <- dat %>%
 datg <- dat %>%
     gather(rate_t, rate_d, key = "group", value = "rate")
 
-# select data
-dat_t <- dat %>%
-    dplyr::filter(rate_t > 0 & rate_t < 1)
+datg <- dat %>%
+    pivot_longer(cols = c(rate_t, rate_d),
+                 names_to = "group", values_to = "rate",
+                 names_transform = list(group = as.factor))
 
-dat_d <- dat %>%
-    dplyr::filter(rate_d > 0 & rate_d < 1)
+res <- datg %>%
+    group_by(group) %>%
+    nest() %>%
+    mutate(filter = map(data,
+                        ~ dplyr::filter(.x, rate > 0 & rate < 1)),
+           glm = map(filter,
+                     ~ glm(rate ~ ldose, weight = total,
+                           family = binomial(probit),
+                           data = .x)),
+           logD50 = map(glm,
+                        ~ deltaMethod(., "-a/b",
+                                      parameterNames= c("a", "b"))),
+           D50 = map(logD50, ~ 10^.))
 
-# analysis
-glm_t <- glm(cbind(toxic, total - toxic) ~ ldose,
-             data = dat_t, family = binomial(probit))
+logTD50 <- res$logD50[[1]]
+logLD50 <- res$logD50[[2]]
+TD50 <- res$D50[[1]]
+LD50 <- res$D50[[2]]
 
-glm_d <- glm(cbind(death, total - death) ~ ldose,
-             data = dat_d, family = binomial(probit))
-
-# fitted curve
+## fitted curve
 grid <- dat %>%
     data_grid(ldose = seq_range(ldose, n = 100, expand = 0.2)) %>%
-    gather_predictions(glm_t, glm_d) %>%
+    gather_predictions(res$glm[[1]], res$glm[[2]]) %>%
     mutate(pred = pnorm(pred))  # probit method
 
-# calculate TD50/LD50 and 95% CI
-logTD50 <- deltaMethod(glm_t, "-a/b", parameterNames= c("a", "b"))
-TD50 <- 10^logTD50
-
-logLD50 <- deltaMethod(glm_d, "-a/b", parameterNames= c("a", "b"))
-LD50 <- 10^logLD50
 
 ########################################
 # Table
 ########################################
 t1 <- dat %>%
-    select(dose, total, toxic, rate_t, death,rate_d) %>%
+    select(dose, total, toxic, rate_t, death, rate_d) %>%
     mutate(rate_t = rate_t * 100,
            rate_d = rate_d * 100) %>%
     tableGrob(cols = c("用量 (mg/kg)", "群の匹数",
@@ -83,7 +85,6 @@ t1 <- dat %>%
 # plot
 ########################################
 yval <- seq(0, 1, by = 0.1)
-myfont <- "TeX Gyre Heros"
 
 p <- ggplot(datg, aes(x = ldose, y = rate)) +
     geom_segment(x = 0, y = 0.5,
@@ -95,9 +96,9 @@ p <- ggplot(datg, aes(x = ldose, y = rate)) +
     geom_segment(x = logLD50$Estimate, y = 0.5,
                  xend = logLD50$Estimate, yend = -10,
                  color = "gray") +
-    geom_point(size = 1.5) +
     geom_line(data = grid,
               aes(y = pred, group = model, color = model)) +
+    geom_point(data = datg, aes(shape = group), size = 1.5) +
     scale_color_brewer(palette = "Set1")
 
 p <- p +
@@ -113,7 +114,7 @@ p <- p +
     annotate("text", x = logLD50$Estimate + 0.18, y = 0.03,
              label = sprintf("LD50 = %3.1f", LD50$Estimate),
              family = myfont) +
-    theme_gray(base_family = myfont) +
+    theme_bw(base_family = myfont) +
     theme(legend.position = "none")
 ```
 
