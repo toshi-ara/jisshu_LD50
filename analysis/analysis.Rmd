@@ -11,6 +11,7 @@ params:
   toxic: NULL
   death: NULL
   total: NULL
+pagetitle: 生物学的検定法
 ---
 
 ```{r, include=FALSE}
@@ -27,57 +28,39 @@ myfont <- "TeX Gyre Heros"
 dat <- tibble(
     dose = params$dose,
     toxic = params$toxic,
-    death = params$death,
     total = params$total
     ) %>%
     mutate(ldose = log10(dose),
-           rate_t = toxic / total,
-           rate_d = death / total)
+           rate = toxic / total)
 
-datg <- dat %>%
-    gather(rate_t, rate_d, key = "group", value = "rate")
-
-datg <- dat %>%
-    pivot_longer(cols = c(rate_t, rate_d),
-                 names_to = "group", values_to = "rate",
-                 names_transform = list(group = as.factor))
-
-res <- datg %>%
-    group_by(group) %>%
-    nest() %>%
-    mutate(filter = map(data,
-                        ~ dplyr::filter(.x, rate > 0 & rate < 1)),
-           glm = map(filter,
+res <- tibble(dat = lst(dat)) %>%
+    mutate(dat_s = map(dat,  ~ dplyr::filter(., rate > 0 & rate < 1)),
+           glm = map(dat_s,
                      ~ glm(rate ~ ldose, weight = total,
-                           family = binomial(probit),
-                           data = .x)),
-           logD50 = map(glm,
-                        ~ deltaMethod(., "-a/b",
-                                      parameterNames= c("a", "b"))),
-           D50 = map(logD50, ~ 10^.))
+                           family = binomial(probit), data = .)),
+           logTD50 = map(glm,
+                         ~ deltaMethod(., "-a/b",
+                                       parameterNames= c("a", "b"))),
+           TD50 = map(logTD50, ~ 10^.))
 
-logTD50 <- res$logD50[[1]]
-logLD50 <- res$logD50[[2]]
-TD50 <- res$D50[[1]]
-LD50 <- res$D50[[2]]
+logTD50 <- res$logTD50[[1]]
+TD50 <- res$TD50[[1]]
+
 
 ## fitted curve
-grid <- dat %>%
-    data_grid(ldose = seq_range(ldose, n = 100, expand = 0.2)) %>%
-    gather_predictions(res$glm[[1]], res$glm[[2]]) %>%
-    mutate(pred = pnorm(pred))  # probit method
+pred <- tibble(ldose = seq_range(dat$ldose, n = 100, expand = 0.2)) %>%
+    gather_predictions(res$glm[[1]], type = "response")
+
 
 
 ########################################
 # Table
 ########################################
 t1 <- dat %>%
-    select(dose, total, toxic, rate_t, death, rate_d) %>%
-    mutate(rate_t = rate_t * 100,
-           rate_d = rate_d * 100) %>%
+    select(dose, total, toxic, rate) %>%
+    mutate(rate = rate * 100) %>%
     tableGrob(cols = c("用量 (mg/kg)", "群の匹数",
-                       "中毒の匹数", "反応割合 (%)",
-                       "死亡した匹数", "反応割合 (%)"),
+                       "中毒の匹数", "反応割合 (%)"),
               theme = ttheme_default(base_size = 12),
               rows = NULL)
 
@@ -86,19 +69,17 @@ t1 <- dat %>%
 ########################################
 yval <- seq(0, 1, by = 0.1)
 
+datg <- res$dat_s[[1]]
+
 p <- ggplot(datg, aes(x = ldose, y = rate)) +
-    geom_segment(x = 0, y = 0.5,
-                 xend = logLD50$Estimate, yend = 0.5,
+    geom_segment(x = -10, y = 0.5,
+                 xend = logTD50$Estimate, yend = 0.5,
                  color = "gray") +
     geom_segment(x = logTD50$Estimate, y = 0.5,
                  xend = logTD50$Estimate, yend = -10,
                  color = "gray") +
-    geom_segment(x = logLD50$Estimate, y = 0.5,
-                 xend = logLD50$Estimate, yend = -10,
-                 color = "gray") +
-    geom_line(data = grid,
-              aes(y = pred, group = model, color = model)) +
-    geom_point(data = datg, aes(shape = group), size = 1.5) +
+    geom_line(data = pred, aes(y = pred)) +
+    geom_point(size = 1.5) +
     scale_color_brewer(palette = "Set1")
 
 p <- p +
@@ -111,9 +92,6 @@ p <- p +
     annotate("text", x = logTD50$Estimate + 0.18, y = 0.03,
              label = sprintf("TD50 = %3.1f", TD50$Estimate),
              family = myfont) +
-    annotate("text", x = logLD50$Estimate + 0.18, y = 0.03,
-             label = sprintf("LD50 = %3.1f", LD50$Estimate),
-             family = myfont) +
     theme_bw(base_family = myfont) +
     theme(legend.position = "none")
 ```
@@ -122,7 +100,7 @@ p <- p +
 # 結果 (Group `r params$group`)
 ## 実験データ
 
-```{r, echo=FALSE, fig.asp=0.4, out.width="90%", fig.align="center"}
+```{r, echo=FALSE, fig.asp=0.4, out.width="70%", fig.align="center"}
 grid.arrange(t1)
 ```
 
@@ -130,36 +108,14 @@ grid.arrange(t1)
 
 - 反応割合が0\%あるいは100\%のデータは使用せずに解析
 
-```{r, echo=FALSE, fig.width=4, fig.asp=0.8, out.width="70%", fig.align="center"}
+```{r, echo=FALSE, fig.width=4, fig.asp=0.8, out.width="50%", fig.align="center"}
 print(p)
 ```
 
 
-## TD~50~, LD~50~値および95%信頼区間
+## TD~50~値および95%信頼区間
 
 - TD~50~ = `r sprintf("%3.1f", TD50[1])` mg/kg
 （95%信頼区間 `r sprintf("%3.1f-%3.1f", TD50[3], TD50[4])`）
-- LD~50~ = `r sprintf("%3.1f", LD50[1])` mg/kg
-（95%信頼区間 `r sprintf("%3.1f-%3.1f", LD50[3], LD50[4])`）
-
-### （参考）95%信頼区間とは
-
-実験の精度を示す指標であるという程度の理解で十分である。
-
-- 信頼区間が狭いと実験の精度が良い
-- 信頼区間が広いと実験の精度が悪い
-
-また、95%信頼区間とは
-「真の値（この場合にはTD~50~およびLD~50~）が95%の確率でこの範囲に含まれている」
-ことを意味するのではない。
-
-まず、
-「真の値（この場合にはTD~50~およびLD~50~であるが誰も真の値を知ることができない）がある」
-と考える。
-その上で1回実験を行い、95%信頼区間を求める。  
-これと同じ実験を繰り返し行うと、（個体差などのサンプリング誤差のため）
-毎回異なる95%信頼区間が得られる。  
-同じ実験を100回行って100個の95%信頼区間が得られた場合に、
-95回分（すなわち95%）の95%信頼区間が真の値を含むというものである。
 
 [（戻る）](index.html)
